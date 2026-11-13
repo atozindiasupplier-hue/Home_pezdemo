@@ -46,6 +46,13 @@
       align-items: center;
       font-weight: bold;
       font-size: 18px;
+      overflow: hidden;
+    }
+
+    .avatar-circle img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .user-greeting {
@@ -130,7 +137,7 @@
     }
 
     .product-icon-box {
-      height: 70px;
+      height: 75px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -139,6 +146,13 @@
       background-color: rgba(94, 234, 212, 0.05);
       border-radius: 12px;
       margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .product-icon-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .product-name {
@@ -152,6 +166,10 @@
       font-size: 11px;
       color: #9ca3af;
       margin-bottom: 14px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     .product-footer {
@@ -170,11 +188,19 @@
       background: none;
       border: none;
       color: #ffffff;
-      font-size: 18px;
+      font-size: 16px;
       cursor: pointer;
       background-color: #262a29;
       padding: 6px 10px;
       border-radius: 8px;
+    }
+
+    .status-banner {
+      text-align: center;
+      font-size: 12px;
+      color: #9ca3af;
+      grid-column: span 2;
+      padding: 20px 0;
     }
 
     /* Bottom Navigation Bar */
@@ -218,16 +244,16 @@
       <div class="avatar-circle" id="userAvatar">U</div>
       <div>
         <div class="user-greeting">Hello,</div>
-        <div class="user-name" id="userName">Raftar</div>
+        <div class="user-name" id="userName">Loading...</div>
       </div>
     </div>
-    <button class="settings-btn">⚙️</button>
+    <button class="settings-btn" onclick="loadHomeData()" title="Refresh">🔄</button>
   </div>
 
   <!-- Workout Banner -->
   <div class="workout-banner">
-    <h2>Today's Workout is Ready!</h2>
-    <p>Use the Scan button below for quick gym entry.</p>
+    <h2 id="bannerTitle">Today's Workout is Ready!</h2>
+    <p id="bannerSubtitle">Use the Scan button below for quick gym entry.</p>
   </div>
 
   <!-- Featured Products Section -->
@@ -236,33 +262,9 @@
     <a href="#" class="view-all">View All</a>
   </div>
 
-  <!-- Products Grid (Dynamic API binding ready) -->
+  <!-- Products Grid -->
   <div class="products-grid" id="productsGrid">
-    <!-- Product 1 -->
-    <div class="product-card">
-      <div>
-        <div class="product-icon-box">🏋️</div>
-        <div class="product-name">Whey Protein Isolate</div>
-        <div class="product-desc">100% Pure Muscle Recovery</div>
-      </div>
-      <div class="product-footer">
-        <div class="product-price">₹2,499</div>
-        <button class="cart-btn">🛒+</button>
-      </div>
-    </div>
-
-    <!-- Product 2 -->
-    <div class="product-card">
-      <div>
-        <div class="product-icon-box">👕</div>
-        <div class="product-name">Pro Gym T-Shirt</div>
-        <div class="product-desc">Dry-Fit Breathable Fabric</div>
-      </div>
-      <div class="product-footer">
-        <div class="product-price">₹699</div>
-        <button class="cart-btn">🛒+</button>
-      </div>
-    </div>
+    <div class="status-banner">Loading products from server...</div>
   </div>
 
   <!-- Bottom Navigation -->
@@ -290,33 +292,110 @@
   </div>
 
   <script>
-    // Yahan apna Home API URL daal dena jo user details aur featured products laएगा
-    const HOME_API_URL = '';
+    const HOME_API_URL = 'https://gym-backend-rfvv.onrender.com/api/user/home/data';
 
     async function loadHomeData() {
-      if (!HOME_API_URL) return;
+      const productsGrid = document.getElementById('productsGrid');
+      const userNameEl = document.getElementById('userName');
+      const userAvatarEl = document.getElementById('userAvatar');
+
+      // LocalStorage se User ka JWT Token nikalna
+      const token = localStorage.getItem('token') || localStorage.getItem('userToken') || '';
 
       try {
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
         const response = await fetch(HOME_API_URL, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: headers
         });
 
-        const data = await response.json();
+        const result = await response.json();
+        console.log('Home API Response:', result);
 
-        if (response.ok && data) {
-          if (data.userName) {
-            document.getElementById('userName').textContent = data.userName;
-            document.getElementById('userAvatar').textContent = data.userName.charAt(0).toUpperCase();
+        if (response.ok && result) {
+          // Data nested ho ya direct, dono handle karega
+          const payload = result.data || result;
+
+          // 1. User ka naam aur Avatar set karna
+          const userObj = payload.user || payload;
+          const fetchedName = userObj.name || userObj.userName || userObj.fullName || 'Raftar';
+          userNameEl.textContent = fetchedName;
+
+          if (userObj.profilePic || userObj.avatar) {
+            userAvatarEl.innerHTML = `<img src="${userObj.profilePic || userObj.avatar}" alt="Avatar" />`;
+          } else {
+            userAvatarEl.textContent = fetchedName.charAt(0).toUpperCase();
           }
-          // Agar products array aaye to grid dynamically update kar sakte hain
+
+          // 2. Workout banner agar API se dynamic aa raha ho toh update karna
+          if (payload.workoutTitle || payload.todayWorkout?.title) {
+            document.getElementById('bannerTitle').textContent = payload.workoutTitle || payload.todayWorkout.title;
+          }
+
+          // 3. Featured Products ko dynamically render karna
+          const products = payload.featuredProducts || payload.products || [];
+
+          if (Array.isArray(products) && products.length > 0) {
+            productsGrid.innerHTML = ''; // Purana loading text hatana
+
+            products.forEach(item => {
+              const pName = item.name || item.title || 'Gym Product';
+              const pDesc = item.description || item.desc || 'Premium Fitness Gear';
+              const pPrice = item.price ?? 0;
+              const pImage = item.image || item.imageUrl || item.thumbnail;
+
+              const mediaContent = pImage 
+                ? `<img src="${pImage}" alt="${pName}" />` 
+                : `🏋️`;
+
+              const cardHTML = `
+                <div class="product-card">
+                  <div>
+                    <div class="product-icon-box">${mediaContent}</div>
+                    <div class="product-name">${pName}</div>
+                    <div class="product-desc">${pDesc}</div>
+                  </div>
+                  <div class="product-footer">
+                    <div class="product-price">₹${Number(pPrice).toLocaleString('en-IN')}</div>
+                    <button class="cart-btn" onclick="addToCart('${item._id || item.id || ''}')">🛒+</button>
+                  </div>
+                </div>
+              `;
+              productsGrid.insertAdjacentHTML('beforeend', cardHTML);
+            });
+          } else {
+            productsGrid.innerHTML = `<div class="status-banner">Abhi koi product listed nahi hai.</div>`;
+          }
+        } else {
+          // Agar token expired ya missing ho (401/403)
+          if (response.status === 401 || response.status === 403) {
+            userNameEl.textContent = 'Guest (Login Required)';
+            productsGrid.innerHTML = `<div class="status-banner">Token missing ya expired hai! Pehle login karein.</div>`;
+          } else {
+            throw new Error(result.message || 'Data fetch failed');
+          }
         }
       } catch (error) {
         console.error('Home API Error:', error);
+        userNameEl.textContent = 'Raftar';
+        productsGrid.innerHTML = `<div class="status-banner">Server se connect nahi ho paya. 🔄 Refresh dabayein.</div>`;
       }
     }
 
-    loadHomeData();
+    function addToCart(productId) {
+      if (!productId) return;
+      alert('Cart mein add ho raha hai! Product ID: ' + productId);
+    }
+
+    // Page load hote hi API call karega
+    window.addEventListener('DOMContentLoaded', loadHomeData);
   </script>
 
 </body>
